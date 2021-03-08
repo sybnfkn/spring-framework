@@ -181,6 +181,7 @@ public class HibernateJpaDialect extends DefaultJpaDialect {
 		}
 
 		// Standard JPA transaction begin call for full JPA context setup...
+
 		entityManager.getTransaction().begin();
 
 		// Adapt flush mode and store previous isolation level, if any.

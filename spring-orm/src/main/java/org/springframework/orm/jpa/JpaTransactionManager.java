@@ -362,6 +362,7 @@ public class JpaTransactionManager extends AbstractPlatformTransactionManager
 		if (getDataSource() != null) {
 			ConnectionHolder conHolder = (ConnectionHolder)
 					TransactionSynchronizationManager.getResource(getDataSource());
+			// 数据库连接吃，后续打开连接都靠这个了
 			txObject.setConnectionHolder(conHolder);
 		}
 
@@ -399,6 +400,7 @@ public class JpaTransactionManager extends AbstractPlatformTransactionManager
 
 			// Delegate to JpaDialect for actual transaction begin.
 			final int timeoutToUse = determineTimeout(definition);
+
 			Object transactionData = getJpaDialect().beginTransaction(em,
 					new JpaTransactionDefinition(definition, timeoutToUse, txObject.isNewEntityManagerHolder()));
 			txObject.setTransactionData(transactionData);
