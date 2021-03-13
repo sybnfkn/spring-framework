@@ -82,6 +82,7 @@ import org.springframework.util.ClassUtils;
  * @author Juergen Hoeller
  * @author Phillip Webb
  * @since 3.0
+ * 参与BeanFactory建造，会解析加了@Configuration的配置类，还会解析@ComponentScan，@ComponenntScans 注解扫描的包，解析@Import注解
  */
 public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPostProcessor,
 		PriorityOrdered, ResourceLoaderAware, BeanClassLoaderAware, EnvironmentAware {

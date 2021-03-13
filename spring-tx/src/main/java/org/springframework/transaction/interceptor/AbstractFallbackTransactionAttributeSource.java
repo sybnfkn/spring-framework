@@ -121,6 +121,7 @@ public abstract class AbstractFallbackTransactionAttributeSource
 		}
 		else {
 			// We need to work it out.
+			// 事务标签提取
 			TransactionAttribute txAttr = computeTransactionAttribute(method, targetClass);
 			// Put it in the cache.
 			if (txAttr == null) {
@@ -160,6 +161,12 @@ public abstract class AbstractFallbackTransactionAttributeSource
 	 * <p>As of 4.1.8, this method can be overridden.
 	 * @since 4.1.8
 	 * @see #getTransactionAttribute
+	 * 对于事务属性的获取规则相信大家都已经很清楚，如果方法中存在事务属性，
+	 * 则使用方法 上的属性，否则使用方法所在的类上的属性，
+	 * 如果方法所在类的属性上还是没有搜寻到对应的 事务属性，那么再搜寻接口中的方法，
+	 * 再没有的话，最后尝试搜寻接口的类上面的声明 。
+	 * 对于 函数 computeTransactionAttribute 中的逻辑与我们所认识的规则并无差别，
+	 * 但是上面函数中并没 有真正的去做搜寻事务属性的逻辑，而是搭建了个执行框架，将搜寻事务属性的任务委托给了findTransactionAttribute方法去执行
 	 */
 	@Nullable
 	protected TransactionAttribute computeTransactionAttribute(Method method, @Nullable Class<?> targetClass) {
@@ -173,23 +180,28 @@ public abstract class AbstractFallbackTransactionAttributeSource
 		Method specificMethod = AopUtils.getMostSpecificMethod(method, targetClass);
 
 		// First try is the method in the target class.
+		// method 代表接口 中的方法 ， specificMethod 代表实现类 中的方法
 		TransactionAttribute txAttr = findTransactionAttribute(specificMethod);
 		if (txAttr != null) {
 			return txAttr;
 		}
 
 		// Second try is the transaction attribute on the target class.
+		// 查看方法所在类是否存在事务声明 存在事务标签解析
 		txAttr = findTransactionAttribute(specificMethod.getDeclaringClass());
 		if (txAttr != null && ClassUtils.isUserLevelMethod(method)) {
 			return txAttr;
 		}
 
+		// 如果存在接口，顺着接口去找
 		if (specificMethod != method) {
+			// 查找接口方法
 			// Fallback is to look at the original method.
 			txAttr = findTransactionAttribute(method);
 			if (txAttr != null) {
 				return txAttr;
 			}
+			// 到接口中类去找
 			// Last fallback is the class of the original method.
 			txAttr = findTransactionAttribute(method.getDeclaringClass());
 			if (txAttr != null && ClassUtils.isUserLevelMethod(method)) {

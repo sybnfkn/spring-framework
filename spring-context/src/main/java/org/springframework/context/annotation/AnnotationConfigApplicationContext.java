@@ -63,6 +63,13 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 * through {@link #register} calls and then manually {@linkplain #refresh refreshed}.
 	 */
 	public AnnotationConfigApplicationContext() {
+		// 此处会先调用父类的构造器，即先执行 super(),初始化DefaultListableBeanFactory
+		// super
+
+		// 初始化了bean的读取器，并向spring中注册了7个spring自带的类，这里的注册指的是将这7个类对应的BeanDefinition放入到到BeanDefinitionMap中
+		/**
+		 * 其中这三个ConfigurationClassPostProcessor、AutowiredAnnotationBeanPostProcessor、CommonAnnotationBeanPostProcessor非常重要
+		 */
 		this.reader = new AnnotatedBeanDefinitionReader(this);
 		this.scanner = new ClassPathBeanDefinitionScanner(this);
 	}
@@ -84,8 +91,19 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	 * {@link Configuration @Configuration} classes
 	 */
 	public AnnotationConfigApplicationContext(Class<?>... componentClasses) {
+		// 1。会初始化一个BeanFactory,为默认的DefaultListableBeanFactory，在父类GenericApplicationContext构造函数中初始化
+		// 2。会初始化一个beanDefinition的读取器，同时向容器中注册了7个spring的后置处理器(包括BeanPostProcessor和BeanFactoryPostProcessor)
+		// 3。会初始化一个扫描器，后面似乎并没有用到这个扫描器，在refresh()中使用的是重新new的一个扫描器。
 		this();
+		/**
+		 * 将传入的配置类annotatedClasses解析成BeanDefinition(实际类型为AnnotatedGenericBeanDefinition)，
+		 * 然后放入到BeanDefinitionMap中，这样后面在ConfigurationClassPostProcessor中能解析annotatedClasses，
+		 * 例如demo中的AppConfig类，只有解析了AppConfig类，才能知道Spring要扫描哪些包(因为在AppConfig类中添加了@ComponentScan注解)，
+		 * 只有知道要扫描哪些包了，才能扫描出需要交给Spring管理的bean有哪些，这样才能利用Spring来创建bean。
+		 */
 		register(componentClasses);
+
+		// 核心！！！！！进行了bean的实例化、初始化、自动装配、AOP等功能
 		refresh();
 	}
 
