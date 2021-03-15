@@ -344,21 +344,28 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		// Use defaults if no transaction definition given.
 		TransactionDefinition def = (definition != null ? definition : TransactionDefinition.withDefaults());
 
-		// 根据不用orm框架 返回不同transaction
+		// 获取事务实例，根据不用orm框架 返回不同transaction，这里使用jdbc的事务管理器 DataSourceTransactionManager
+		// 创建jdbc事务实例
 		Object transaction = doGetTransaction();
 		boolean debugEnabled = logger.isDebugEnabled();
 
+		// 判断当前线程是否存在事务 ，判断依据为当前线程记录的连接不为空且连接(connectionHolder) transactionActive 属性不为空
+		// 如果当前线程存在事务，转向嵌套事务处理
+		// Spring中支持多种事务的传播规则， 比如PROPAGATION NESTED、 PROPAGATION_REQUI阻止NEW 等，这些都是在已经存在事务的基础上进行进一步的处理，
+		// 那么，对于已经存在的事务 ，准备操作是如何进行的呢
 		if (isExistingTransaction(transaction)) {
 			// Existing transaction found -> check propagation behavior to find out how to behave.
 			return handleExistingTransaction(def, transaction, debugEnabled);
 		}
 
 		// Check definition settings for new transaction.
+		// 事务超时设置
 		if (def.getTimeout() < TransactionDefinition.TIMEOUT_DEFAULT) {
 			throw new InvalidTimeoutException("Invalid transaction timeout", def.getTimeout());
 		}
 
 		// No existing transaction found -> check propagation behavior to find out how to proceed.
+		// 如果当前线程不存在事务 ，但是 propagationBehavior 却被声明为 PROPAGATION MANDATORY 抛出 异常
 		if (def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_MANDATORY) {
 			throw new IllegalTransactionStateException(
 					"No existing transaction found for transaction marked with propagation 'mandatory'");
@@ -366,12 +373,17 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		else if (def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRED ||
 				def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRES_NEW ||
 				def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_NESTED) {
+			// PROPAGATION_REQUIRED，PROPAGATION_REQUIRES_NEW，PROPAGATION_NESTED都需要新建事务
+
+			// 空挂起
 			SuspendedResourcesHolder suspendedResources = suspend(null);
 			if (debugEnabled) {
 				logger.debug("Creating new transaction with name [" + def.getName() + "]: " + def);
 			}
 			try {
 				// 开启事务
+				// 构造transaction，包括ConnectionHolder，隔离级别，timeout
+				// 如果是新连接，绑定当前线程
 				return startTransaction(def, transaction, debugEnabled, suspendedResources);
 			}
 			catch (RuntimeException | Error ex) {
@@ -400,7 +412,9 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		DefaultTransactionStatus status = newTransactionStatus(
 				definition, transaction, true, newSynchronization, debugEnabled, suspendedResources);
 		// 开启事务
+		// 构造 transaction，包括设置 connectionHodler、隔离级别 、如果是新连接 ， 绑定到当前线程
 		doBegin(transaction, definition);
+		// 新同步事务设置，针对当前线程设置
 		prepareSynchronization(status, definition);
 		return status;
 	}
@@ -427,11 +441,16 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 					definition, null, false, newSynchronization, debugEnabled, suspendedResources);
 		}
 
+		/**
+		 * PROPAGATION_RQUIRES NEW 表示当前方法必须在它自己的事务里运行，一个新 的事务将被启动，而如果有一个事务正在运行的话，则在这个方法运行期间被挂起 。
+		 * 而 Spring 中对于此种传播方式的处理与新事务建立最大的不同点在于使用 suspend 方法将 原事务挂起。 将信息挂起的目的当然是为了在当前事务执行完毕后在将原事务还原
+		 */
 		if (definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRES_NEW) {
 			if (debugEnabled) {
 				logger.debug("Suspending current transaction, creating new transaction with name [" +
 						definition.getName() + "]");
 			}
+			// 对挂起操作主要记录原事务状态，方便后续操作对事务回复
 			SuspendedResourcesHolder suspendedResources = suspend(transaction);
 			try {
 				return startTransaction(definition, transaction, debugEnabled, suspendedResources);
@@ -441,7 +460,11 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				throw beginEx;
 			}
 		}
-
+		// 嵌入式事务处理
+		/**
+		 * PROPAGATION NESTED 表示如果当前正有一个事务在运行中，则该方法应该运行在 一个嵌套的事务中，
+		 * 被嵌套的事务可以独立于封装事务进行提交或者回滚，如果封装事务不存在，行为就像PROPAGATION_REQUIRES NEW
+		 */
 		if (definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_NESTED) {
 			if (!isNestedTransactionAllowed()) {
 				throw new NestedTransactionNotSupportedException(
@@ -455,6 +478,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				// Create savepoint within existing Spring-managed transaction,
 				// through the SavepointManager API implemented by TransactionStatus.
 				// Usually uses JDBC 3.0 savepoints. Never activates Spring synchronization.
+				// 如果没有可以使用保存点的方式控制事务回滚，那么嵌入式事务建立初始建立保存点
+				// Spring 中允许嵌入事务的时候，则首选设直保存点的方式作为异常处理的回滚
 				DefaultTransactionStatus status =
 						prepareTransactionStatus(definition, transaction, false, false, debugEnabled, null);
 				status.createAndHoldSavepoint();
@@ -464,6 +489,11 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				// Nested transaction through nested begin and commit/rollback calls.
 				// Usually only for JTA: Spring synchronization might get activated here
 				// in case of a pre-existing JTA transaction.
+				// 有些情况不能使用保存点操作，比如JTA，那么新建事务
+				/**
+				 * 于其他方式，比 如 JTA 无法使用保存点的方式，那么处理方式与 PROPAGATION_ REQUIRES NEW 相同 ，
+				 * 而一旦出现异常 ， 则由 Spring 的事务异常处理机制去完成 后 续操作 。
+				 */
 				return startTransaction(definition, transaction, debugEnabled, null);
 			}
 		}

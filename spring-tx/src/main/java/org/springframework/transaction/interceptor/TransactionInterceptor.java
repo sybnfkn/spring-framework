@@ -49,6 +49,7 @@ import org.springframework.transaction.TransactionManager;
  * @see TransactionProxyFactoryBean
  * @see org.springframework.aop.framework.ProxyFactoryBean
  * @see org.springframework.aop.framework.ProxyFactory
+ * 继承自MethodInterceptor 所以调用类从invoke方法开始
  */
 @SuppressWarnings("serial")
 public class TransactionInterceptor extends TransactionAspectSupport implements MethodInterceptor, Serializable {
@@ -106,6 +107,7 @@ public class TransactionInterceptor extends TransactionAspectSupport implements 
 	}
 
 
+	// 继承自MethodInterceptor 所以调用类从invoke方法开始
 	@Override
 	@Nullable
 	public Object invoke(MethodInvocation invocation) throws Throwable {
