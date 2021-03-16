@@ -645,6 +645,7 @@ public abstract class TransactionAspectSupport implements BeanFactoryAware, Init
 			if (logger.isTraceEnabled()) {
 				logger.trace("Completing transaction for [" + txInfo.getJoinpointIdentification() + "]");
 			}
+			// 进入
 			txInfo.getTransactionManager().commit(txInfo.getTransactionStatus());
 		}
 	}
@@ -667,12 +668,14 @@ public abstract class TransactionAspectSupport implements BeanFactoryAware, Init
 			 * 在对目标方法的执行过程中，一旦出 现 Throwable 就会被引导至此方法处理，但是并不代 表所有的 Throwable 都会被 回滚处理，
 			 * 比如我们常用的 Exception， 默认是不会被处理的 。默 认情况下，即使出现异常，数据也会被正常提交，而这个关键的地方就是在
 			 * txlnfo.transaction Attribute.rollbackOn(ex)这个函数
+			 *
+			 * (ex instanceof RuntimeException || ex instanceof Error);
 			 */
 			if (txInfo.transactionAttribute != null && txInfo.transactionAttribute.rollbackOn(ex)) {
 				try {
 					// 根据 TransactionStatus 信息进行 回滚处理
 					/**
-					 *
+					 * 进入回滚函数 重点
 					 */
 					txInfo.getTransactionManager().rollback(txInfo.getTransactionStatus());
 				}

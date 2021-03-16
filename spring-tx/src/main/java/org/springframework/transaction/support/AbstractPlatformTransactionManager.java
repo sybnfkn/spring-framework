@@ -725,6 +725,12 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		}
 
 		DefaultTransactionStatus defStatus = (DefaultTransactionStatus) status;
+		/**
+		 * 某个事务是另一个事务的嵌入事务 ， 但是， 这些事务又不在 Spring 的管理范围 内， 或者无 法设置保存点 ，
+		 * 那么 Spring 会通过设置 回滚标识的方式来禁止提交。 首先当某个嵌入事务发生 回滚的时候会设置回滚标识，
+		 * 而等到外部事务提交时， 一旦判断出当前事务流被设置了回滚标 识， 则由外部事务来统一进行整体事务的回滚
+		 */
+		// 如果在事务链中被标记回滚，那么不会尝试提交事务，直接回滚
 		if (defStatus.isLocalRollbackOnly()) {
 			if (defStatus.isDebug()) {
 				logger.debug("Transactional code has requested rollback");
@@ -740,7 +746,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			processRollback(defStatus, true);
 			return;
 		}
-
+		// 处理事务提交
 		processCommit(defStatus);
 	}
 
@@ -749,6 +755,16 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * Rollback-only flags have already been checked and applied.
 	 * @param status object representing the transaction
 	 * @throws TransactionException in case of commit failure
+	 * 当事务状态 中有保存点信息的话俊不会去才是交事务。
+	 * 当事务非新事务的时候也不会去执行提交事务操作
+	 *
+	 *
+	 * *********************************************************************
+	 * 对于内嵌事务，在 Spring 中正常的处理方式是将 内嵌事 务开始之前设置保存点，
+	 * 一旦内嵌事务出现异常便根据保存点信息进行回滚，但是如果没有出 现异常，内嵌事务并不会单独提交，
+	 * 而是根据事务流由最外层事务负责提交， 所以如果当前存 在保存点信息便不是最外层事务 ，
+	 * 不做保存操作，对于是否是新事务的判断也是基于此考虑
+	 * *********************************************************************
 	 */
 	private void processCommit(DefaultTransactionStatus status) throws TransactionException {
 		try {
@@ -768,6 +784,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 						logger.debug("Releasing transaction savepoint");
 					}
 					unexpectedRollback = status.isGlobalRollbackOnly();
+					// 如果存在保存点就清楚保存点信息，不会提交事务
 					status.releaseHeldSavepoint();
 				}
 				else if (status.isNewTransaction()) {
@@ -775,7 +792,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 						logger.debug("Initiating transaction commit");
 					}
 					unexpectedRollback = status.isGlobalRollbackOnly();
-					//
+					// 如果是独立事务直接提交 会引导到底层数据库连接
 					doCommit(status);
 				}
 				else if (isFailEarlyOnGlobalRollbackOnly()) {
@@ -791,6 +808,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			}
 			catch (UnexpectedRollbackException ex) {
 				// can only be caused by doCommit
+				// 添加的 TransactionSynchronization 中的对应方法的调用
 				triggerAfterCompletion(status, TransactionSynchronization.STATUS_ROLLED_BACK);
 				throw ex;
 			}
@@ -808,6 +826,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				if (!beforeCompletionInvoked) {
 					triggerBeforeCompletion(status);
 				}
+				// 提交过程中出现异常则回滚
 				doRollbackOnCommitException(status, ex);
 				throw ex;
 			}
@@ -842,6 +861,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		}
 
 		DefaultTransactionStatus defStatus = (DefaultTransactionStatus) status;
+		// 进入
 		processRollback(defStatus, false);
 	}
 
@@ -856,18 +876,24 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			boolean unexpectedRollback = unexpected;
 
 			try {
+				// 激活所有TransactionSynchronizeation中对应的方法
 				triggerBeforeCompletion(status);
 
 				if (status.hasSavepoint()) {
 					if (status.isDebug()) {
 						logger.debug("Rolling back transaction to savepoint");
 					}
+					// 如果有保存点，也就是当前事务为单独的线程则退到保存点
+					// 常见的是嵌入式事务，对于嵌入式事务处理，内嵌事务异常并不会引起外部事务回滚
 					status.rollbackToHeldSavepoint();
 				}
 				else if (status.isNewTransaction()) {
 					if (status.isDebug()) {
 						logger.debug("Initiating transaction rollback");
 					}
+					// 如果当前事务是新事务，直接回退
+					// 常见于单独的事务处理，对于没有保存点的回滚，spring使用底层数据库连接提供的api操作
+					// 由于我们看的是DataSourceTransactionManager，那么doRollBack进入此方法
 					doRollback(status);
 				}
 				else {
@@ -877,6 +903,8 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 							if (status.isDebug()) {
 								logger.debug("Participating transaction failed - marking existing transaction as rollback-only");
 							}
+							// 如果当前事务不是独立事务，只能标记状态，等到事务链执行完毕后统一回滚
+							// 不属于上述两种情况，多用于JTA，***只做回滚标示，等到提交时候，统一不进行提交
 							doSetRollbackOnly(status);
 						}
 						else {
@@ -898,7 +926,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				triggerAfterCompletion(status, TransactionSynchronization.STATUS_UNKNOWN);
 				throw ex;
 			}
-
+			// 激活所有TransactionSynchronization中对应的方法
 			triggerAfterCompletion(status, TransactionSynchronization.STATUS_ROLLED_BACK);
 
 			// Raise UnexpectedRollbackException if we had a global rollback-only marker
@@ -908,6 +936,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			}
 		}
 		finally {
+			// 清空记录的资源并将挂起资源恢复
 			cleanupAfterCompletion(status);
 		}
 	}
@@ -1032,10 +1061,13 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	 * @see #doCleanupAfterCompletion
 	 */
 	private void cleanupAfterCompletion(DefaultTransactionStatus status) {
+		// 设置完成状态，避免重复调用
 		status.setCompleted();
+		// 如果当前事务是新的同步状态，需要将绑定到当前线程的事务信息清楚
 		if (status.isNewSynchronization()) {
 			TransactionSynchronizationManager.clear();
 		}
+		// 如果新事务需要做一些清理资源的工作
 		if (status.isNewTransaction()) {
 			doCleanupAfterCompletion(status.getTransaction());
 		}
@@ -1044,6 +1076,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				logger.debug("Resuming suspended transaction after completion of inner transaction");
 			}
 			Object transaction = (status.hasTransaction() ? status.getTransaction() : null);
+			// 结束之前事务的挂起状态
 			resume(transaction, (SuspendedResourcesHolder) status.getSuspendedResources());
 		}
 	}
