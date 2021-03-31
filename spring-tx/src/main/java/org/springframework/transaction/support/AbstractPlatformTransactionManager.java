@@ -345,7 +345,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		TransactionDefinition def = (definition != null ? definition : TransactionDefinition.withDefaults());
 
 		// 获取事务实例，根据不同orm框架 返回不同transaction，这里使用jdbc的事务管理器 DataSourceTransactionManager
-		// 创建jdbc事务实例
+		// 创建jdbc事务实例,第一次进来，connectionHolder中不存在东西
 		Object transaction = doGetTransaction();
 		boolean debugEnabled = logger.isDebugEnabled();
 
@@ -359,13 +359,14 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		}
 
 		// Check definition settings for new transaction.
-		// 事务超时设置
+		// 事务超时校验
 		if (def.getTimeout() < TransactionDefinition.TIMEOUT_DEFAULT) {
 			throw new InvalidTimeoutException("Invalid transaction timeout", def.getTimeout());
 		}
 
 		// No existing transaction found -> check propagation behavior to find out how to proceed.
 		// 如果当前线程不存在事务 ，但是 propagationBehavior 却被声明为 PROPAGATION MANDATORY 抛出 异常
+		// PROPAGATION_MANDATORY：定义就是-如果已经存在一个事务, 支持当前事务. 如果没有一个活动的事务, 就抛出异常 ，显然第一次进来是没有活动事务的
 		if (def.getPropagationBehavior() == TransactionDefinition.PROPAGATION_MANDATORY) {
 			throw new IllegalTransactionStateException(
 					"No existing transaction found for transaction marked with propagation 'mandatory'");
@@ -849,6 +850,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 
 		}
 		finally {
+			// 做一些清理工作
 			cleanupAfterCompletion(status);
 		}
 	}
@@ -1070,7 +1072,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 	private void cleanupAfterCompletion(DefaultTransactionStatus status) {
 		// 设置完成状态，避免重复调用
 		status.setCompleted();
-		// 如果当前事务是新的同步状态，需要将绑定到当前线程的事务信息清楚
+		// 如果当前事务是新的同步状态，需要将绑定到当前线程的事务信息清除
 		if (status.isNewSynchronization()) {
 			TransactionSynchronizationManager.clear();
 		}
