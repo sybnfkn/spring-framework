@@ -274,6 +274,7 @@ public class DataSourceTransactionManager extends AbstractPlatformTransactionMan
 			// 尝试获取连接，并不是每次都会获取新的连接，如果holder中存在，就直接获取
 			if (!txObject.hasConnectionHolder() ||
 					txObject.getConnectionHolder().isSynchronizedWithTransaction()) {
+				// 获取数据库连接
 				Connection newCon = obtainDataSource().getConnection();
 				if (logger.isDebugEnabled()) {
 					logger.debug("Acquired Connection [" + newCon + "] for JDBC transaction");
@@ -330,7 +331,9 @@ public class DataSourceTransactionManager extends AbstractPlatformTransactionMan
 	@Override
 	protected Object doSuspend(Object transaction) {
 		DataSourceTransactionObject txObject = (DataSourceTransactionObject) transaction;
+		// 把当前事务的connectionHolder数据库连接持有者清空。
 		txObject.setConnectionHolder(null);
+		// 当前线程解绑datasource.
 		return TransactionSynchronizationManager.unbindResource(obtainDataSource());
 	}
 

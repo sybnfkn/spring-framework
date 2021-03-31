@@ -40,7 +40,7 @@ import org.springframework.transaction.interceptor.TransactionInterceptor;
 public class ProxyTransactionManagementConfiguration extends AbstractTransactionManagementConfiguration {
 
 	@Bean(name = TransactionManagementConfigUtils.TRANSACTION_ADVISOR_BEAN_NAME)
-	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)//定义事务增强器
 	public BeanFactoryTransactionAttributeSourceAdvisor transactionAdvisor(
 			TransactionAttributeSource transactionAttributeSource, TransactionInterceptor transactionInterceptor) {
 
@@ -54,13 +54,13 @@ public class ProxyTransactionManagementConfiguration extends AbstractTransaction
 	}
 
 	@Bean
-	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)//定义基于注解的事务属性资源
 	public TransactionAttributeSource transactionAttributeSource() {
 		return new AnnotationTransactionAttributeSource();
 	}
 
 	@Bean
-	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+	@Role(BeanDefinition.ROLE_INFRASTRUCTURE)//定义事务拦截器
 	public TransactionInterceptor transactionInterceptor(TransactionAttributeSource transactionAttributeSource) {
 		TransactionInterceptor interceptor = new TransactionInterceptor();
 		interceptor.setTransactionAttributeSource(transactionAttributeSource);
