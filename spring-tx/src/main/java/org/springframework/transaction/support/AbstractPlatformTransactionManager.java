@@ -446,8 +446,10 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 		}
 
 		/**
-		 * PROPAGATION_RQUIRES NEW 表示当前方法必须在它自己的事务里运行，一个新 的事务将被启动，而如果有一个事务正在运行的话，则在这个方法运行期间被挂起 。
-		 * 而 Spring 中对于此种传播方式的处理与新事务建立最大的不同点在于使用 suspend 方法将 原事务挂起。 将信息挂起的目的当然是为了在当前事务执行完毕后在将原事务还原
+		 * PROPAGATION_RQUIRES NEW 表示当前方法必须在它自己的事务里运行，一个新 的事务将被启动，
+		 * 而如果有另外一个事务正在运行的话，则在这个方法运行期间被挂起 。
+		 * 而 Spring 中对于此种传播方式的处理与新事务建立最大的不同点在于使用 suspend 方法将 原事务挂起。
+		 * 将信息挂起的目的当然是为了在当前事务执行完毕后在将原事务还原
 		 */
 		if (definition.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRES_NEW) {
 			if (debugEnabled) {
@@ -455,6 +457,9 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 						definition.getName() + "]");
 			}
 			// 对挂起操作主要记录原事务状态，方便后续操作对事务恢复
+			// ******包括当前线程threadlocalmap中事务连接等信息重新保存到suspendedResources中，
+			// ******后续提交时候再次恢复到当前线程上。所以suspend会将当前线程绑定的信息清除重新保存
+			// ****** 后续会重新创建一个mysql连接
 			SuspendedResourcesHolder suspendedResources = suspend(transaction);
 			try {
 				return startTransaction(definition, transaction, debugEnabled, suspendedResources);
@@ -486,6 +491,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				// Spring 中允许嵌入事务的时候，则首选设直保存点的方式作为异常处理的回滚
 				DefaultTransactionStatus status =
 						prepareTransactionStatus(definition, transaction, false, false, debugEnabled, null);
+				// 创建保存点
 				status.createAndHoldSavepoint();
 				return status;
 			}
@@ -787,6 +793,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				triggerBeforeCompletion(status);
 				beforeCompletionInvoked = true;
 
+				// 嵌套式事务会设置保存点，如果到这一步说明嵌套事务已经成功了
 				if (status.hasSavepoint()) {
 					if (status.isDebug()) {
 						logger.debug("Releasing transaction savepoint");
