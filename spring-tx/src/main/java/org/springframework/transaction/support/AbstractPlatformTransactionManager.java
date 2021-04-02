@@ -441,6 +441,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 			}
 			Object suspendedResources = suspend(transaction);
 			boolean newSynchronization = (getTransactionSynchronization() == SYNCHRONIZATION_ALWAYS);
+			// 注意这里会把事务状态newTransaction改为false，保证内层事务提交时候，不会真正发起数据库提交
 			return prepareTransactionStatus(
 					definition, null, false, newSynchronization, debugEnabled, suspendedResources);
 		}
@@ -489,6 +490,7 @@ public abstract class AbstractPlatformTransactionManager implements PlatformTran
 				// Usually uses JDBC 3.0 savepoints. Never activates Spring synchronization.
 				// 如果没有可以使用保存点的方式控制事务回滚，那么嵌入式事务建立初始建立保存点
 				// Spring 中允许嵌入事务的时候，则首选设直保存点的方式作为异常处理的回滚
+				// 注意这里会把事务状态newTransaction改为false，保证内层事务提交时候，不会真正发起数据库提交，只会提交到保存点
 				DefaultTransactionStatus status =
 						prepareTransactionStatus(definition, transaction, false, false, debugEnabled, null);
 				// 创建保存点
